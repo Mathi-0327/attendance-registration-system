@@ -1,0 +1,46 @@
+{
+  "include": [
+    "frontend/src/**/*",
+    "database/**/*",
+    "backend/**/*",
+    "shared/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "**/*.test.ts"
+  ],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": true,
+    "module": "ESNext",
+    "strict": true,
+    "noImplicitAny": false,
+    "types": [
+      "node-cron"
+    ],
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable"
+    ],
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./frontend/src/*"
+      ],
+      "@shared/*": [
+        "./database/*",
+        "./shared/*"
+      ]
+    },
+    "target": "ES2022"
+  }
+}
