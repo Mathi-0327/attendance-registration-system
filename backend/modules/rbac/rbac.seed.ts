@@ -298,5 +298,35 @@ export async function seedRBAC(): Promise<void> {
   }
 
   console.log(`[rbac] Seeded ${ROLE_DEFINITIONS.length} roles with permissions`);
+
+  // 4. Ensure initial Super Admin user exists if database has 0 users
+  const { authUsers, userRoles } = await import("../../../database/schema/auth.schema");
+  const existingUsers = await db.select().from(authUsers);
+  if (existingUsers.length === 0) {
+    const bcrypt = (await import("bcrypt")).default;
+    const passwordHash = await bcrypt.hash("Admin@2026!", 12);
+    const [adminUser] = await db.insert(authUsers).values({
+      username: "admin",
+      email: "admin@attendreg.edu",
+      passwordHash,
+      name: "System Administrator",
+      isActive: true,
+      isEmailVerified: true,
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+
+    const [superAdminRole] = await db.select().from(roles).where(eq(roles.name, UserRole.SUPER_ADMIN));
+    if (superAdminRole) {
+      await db.insert(userRoles).values({
+        userId: adminUser.id,
+        roleId: superAdminRole.id,
+        scopeType: "global",
+        grantedAt: now,
+      });
+    }
+    console.log("[rbac] Initial Super Admin auto-created: admin (admin@attendreg.edu)");
+  }
+
   console.log("[rbac] RBAC seed complete ✓");
 }
