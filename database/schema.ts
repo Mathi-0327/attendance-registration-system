@@ -87,15 +87,32 @@ export const insertStudentSchema = createInsertSchema(students).pick({
 export type InsertStudent = z.infer<typeof insertStudentSchema>;
 export type Student = typeof students.$inferSelect;
 
-// Student registration validation schema
+// Student registration validation schema (Includes mandatory Parent/Guardian details)
 export const studentRegistrationSchema = z.object({
+  // Student Information
   studentId: z.string().min(3, "Student ID must be at least 3 characters"),
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address").optional().or(z.literal("")),
-  phone: z.string().optional(),
+  phone: z.string().optional().or(z.literal("")),
   department: z.string().min(1, "Department is required"),
-  year: z.string().optional(),
+  year: z.string().optional().or(z.literal("")),
   password: z.string().min(6, "Password must be at least 6 characters"),
+
+  // Parent / Guardian Information (Mandatory)
+  parentName: z.string().min(2, "Parent/Guardian full name is required (min 2 characters)"),
+  parentRelationship: z.enum(["father", "mother", "guardian", "other"], {
+    errorMap: () => ({ message: "Please select a valid relationship (father, mother, guardian, other)" }),
+  }),
+  parentPhone: z
+    .string()
+    .min(10, "Parent mobile number must be at least 10 digits")
+    .regex(/^[+]?[0-9\s-]{10,15}$/, "Invalid mobile number format"),
+  parentEmail: z.string().email("Valid parent email address is required"),
+
+  // Optional Parent Details
+  parentAlternatePhone: z.string().optional().or(z.literal("")),
+  parentAlternateEmail: z.string().email("Invalid alternate email").optional().or(z.literal("")),
+  emergencyContact: z.string().optional().or(z.literal("")),
 });
 
 // Student login schema

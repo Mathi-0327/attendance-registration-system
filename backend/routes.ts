@@ -19,6 +19,8 @@ import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
 import { aiRouter } from "./modules/ai/ai.routes";
 import { reportRouter } from "./modules/reports/report.routes";
 import { auditRouter } from "./modules/audit/audit.routes";
+import { studentRepository } from "./modules/students/student.repository";
+import { attendanceNotificationService } from "./services/notifications/attendance-notification.service";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -47,13 +49,35 @@ export async function registerRoutes(
   app.use("/api/reports", reportRouter);
   app.use("/api/audit", auditRouter);
 
-  // Helper to get client Public IP (works on Render)
+  // Helper to get client Public IP (works on Render & local Wi-Fi)
   const getClientIp = (req: Request): string => {
     const forwarded = req.headers["x-forwarded-for"];
-    if (typeof forwarded === "string") {
-      return forwarded.split(",")[0].trim();
+    let ip = typeof forwarded === "string" ? forwarded.split(",")[0].trim() : (req.socket.remoteAddress || "unknown");
+    return ip.replace(/^::ffff:/, '');
+  };
+
+  // Helper to verify if client and moderator are on the same Wi-Fi / local network
+  const isSameNetwork = (clientIp: string, authIp?: string | null): boolean => {
+    if (!authIp) return true;
+    const cIp = clientIp.replace(/^::ffff:/, '').trim();
+    const aIp = authIp.replace(/^::ffff:/, '').trim();
+
+    if (cIp === aIp) return true;
+    if (aIp === "127.0.0.1" || aIp === "::1" || aIp === "unknown") return true;
+    if (cIp === "127.0.0.1" || cIp === "::1" || cIp === "unknown") return true;
+
+    // Check same subnet (/24 or private network class)
+    const cParts = cIp.split(".");
+    const aParts = aIp.split(".");
+    if (cParts.length === 4 && aParts.length === 4) {
+      if (cParts[0] === aParts[0] && cParts[1] === aParts[1] && cParts[2] === aParts[2]) {
+        return true;
+      }
+      if (cParts[0] === aParts[0] && (cParts[0] === "10" || cParts[0] === "192" || cParts[0] === "172")) {
+        return true;
+      }
     }
-    return req.socket.remoteAddress || "unknown";
+    return false;
   };
 
   // Device Info Helper
@@ -73,7 +97,7 @@ export async function registerRoutes(
     let message = "You are ready to submit.";
 
     if (activeSession && activeSession.authorizedIp) {
-      if (clientIp !== activeSession.authorizedIp) {
+      if (!isSameNetwork(clientIp, activeSession.authorizedIp)) {
         allowed = false;
         message = "Access Denied: You are not on the same Wi-Fi network as the Moderator.";
       }
@@ -154,8 +178,8 @@ export async function registerRoutes(
       const clientIp = getClientIp(req);
 
       // --- THE MAIN SECURITY GOAL ---
-      // Check if Student IP matched the Host IP saved when session started
-      if (activeSession.authorizedIp && clientIp !== activeSession.authorizedIp) {
+      // Check if Student IP matched the Host IP/Subnet saved when session started
+      if (activeSession.authorizedIp && !isSameNetwork(clientIp, activeSession.authorizedIp)) {
         return res.status(403).json({
           error: "Network Security Violation",
           message: "You must be on the same Wi-Fi network as the Moderator to submit attendance."
@@ -199,6 +223,17 @@ export async function registerRoutes(
       const wsServer = getWebSocketServer();
       if (wsServer) wsServer.notifyAttendanceRecorded(record);
 
+      // Asynchronously notify Student + Parent/Guardian (decoupled, non-blocking)
+      attendanceNotificationService.notifyAttendance({
+        studentId,
+        studentName: name,
+        department: department || undefined,
+        sessionId: activeSession.id,
+        sessionName: activeSession.name || `Session #${activeSession.id}`,
+        status: "present",
+        timestamp: record.timestamp,
+      }).catch((err) => console.error("[attendance-notification] Error:", err));
+
       // Fire-and-forget: workflow automation (late alert, proxy check)
       workflowDispatcher.dispatch({
         type: "ATTENDANCE_MARKED",
@@ -224,10 +259,10 @@ export async function registerRoutes(
 
   // --- Admin Specific Routes (called directly from AdminDashboard.tsx) ---
 
-  // Admin: Get all students
+  // Admin: Get all students with Parent Linkage Status
   app.get("/api/admin/students", async (_req: Request, res: Response) => {
     try {
-      const students = await storage.getAllStudents();
+      const students = await studentRepository.findAllWithParentStatus();
       res.json({ students });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch students" });
@@ -246,6 +281,20 @@ export async function registerRoutes(
       // but let's check or implement if missing. 
       // For now, let's assume we need to add it to IStorage.
       await storage.deleteStudent(student.id);
+      res.json({ message: "Student deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete student" });
+    }
+  });
+
+  app.delete("/api/students/:studentId", async (req: Request, res: Response) => {
+    try {
+      const { studentId } = req.params;
+      const student = await studentRepository.findByStudentId(studentId) || await storage.getStudentById(studentId);
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+      await studentRepository.delete(student.id);
       res.json({ message: "Student deleted successfully" });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete student" });
@@ -338,15 +387,246 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid registration data", details: validated.error.errors });
       }
 
-      const existing = await storage.getStudentById(validated.data.studentId);
+      const existing = await studentRepository.findByStudentId(validated.data.studentId);
       if (existing) {
         return res.status(400).json({ error: "Student ID already registered" });
       }
 
-      const student = await storage.createStudent(validated.data);
-      res.status(201).json({ message: "Registration successful", student });
+      const {
+        studentId,
+        name,
+        email,
+        phone,
+        department,
+        year,
+        password,
+        parentName,
+        parentRelationship,
+        parentPhone,
+        parentEmail,
+        parentAlternatePhone,
+        parentAlternateEmail,
+        emergencyContact,
+      } = validated.data;
+
+      const student = await studentRepository.create(
+        {
+          studentId,
+          name,
+          email: email || null,
+          phone: phone || null,
+          department,
+          year: year || null,
+          password,
+        },
+        {
+          parentName,
+          relationship: parentRelationship,
+          phone: parentPhone,
+          email: parentEmail,
+          alternatePhone: parentAlternatePhone || undefined,
+          alternateEmail: parentAlternateEmail || undefined,
+          emergencyContact: emergencyContact || undefined,
+        }
+      );
+
+      const parent = await studentRepository.getParentDetails(studentId);
+      res.status(201).json({ message: "Registration successful", student, parent });
     } catch (error) {
+      console.error("[registration] Error:", error);
       res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  // --- Face Recognition Student Face Profiles (Placed before :studentId wildcard) ---
+  app.get("/api/students/with-faces", async (_req: Request, res: Response) => {
+    try {
+      const students = await storage.getAllStudents();
+      const studentsWithFaces = students
+        .map((s) => {
+          let desc = s.faceDescriptor;
+          if (typeof desc === "string") {
+            try {
+              desc = JSON.parse(desc);
+            } catch (e) {
+              desc = null;
+            }
+          }
+          return {
+            ...s,
+            faceDescriptor: desc,
+          };
+        })
+        .filter(
+          (s) =>
+            (Boolean(s.faceRegistered) || (Array.isArray(s.faceDescriptor) && s.faceDescriptor.length === 128)) &&
+            Array.isArray(s.faceDescriptor) &&
+            s.faceDescriptor.length === 128
+        );
+      res.json({ students: studentsWithFaces });
+    } catch (error) {
+      console.error("Error fetching students with faces:", error);
+      res.status(500).json({ error: "Failed to fetch students with faces" });
+    }
+  });
+
+  // Get single student by student ID
+  app.get("/api/students/:studentId", async (req: Request, res: Response) => {
+    try {
+      const { studentId } = req.params;
+      const student = await studentRepository.findByStudentId(studentId);
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+      res.json({ student });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch student" });
+    }
+  });
+
+  // Update single student by student ID
+  app.put("/api/students/:studentId", async (req: Request, res: Response) => {
+    try {
+      const { studentId } = req.params;
+      const student = await studentRepository.findByStudentId(studentId);
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      const { name, email, phone, department, year } = req.body;
+      const updated = await studentRepository.update(student.id, {
+        name: name || student.name,
+        email: email !== undefined ? email : student.email,
+        phone: phone !== undefined ? phone : student.phone,
+        department: department || student.department,
+        year: year !== undefined ? year : student.year,
+      });
+
+      res.json({ message: "Student updated successfully", student: updated });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update student" });
+    }
+  });
+
+  // Get student attendance records
+  app.get("/api/students/:studentId/attendance", async (req: Request, res: Response) => {
+    try {
+      const { studentId } = req.params;
+      const allRecords = await storage.getAllAttendanceRecords();
+      const studentRecords = allRecords
+        .filter((r) => r.studentId === studentId)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      res.json({ records: studentRecords });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch attendance records" });
+    }
+  });
+
+  // Get student attendance streak
+  app.get("/api/students/:studentId/streak", async (req: Request, res: Response) => {
+    try {
+      const { studentId } = req.params;
+      const allRecords = await storage.getAllAttendanceRecords();
+      const studentRecords = allRecords.filter(
+        (r) => r.studentId === studentId && (r.status === "present" || r.status === "late")
+      );
+
+      if (studentRecords.length === 0) {
+        return res.json({ streak: 0 });
+      }
+
+      const uniqueDates = Array.from(
+        new Set(studentRecords.map((r) => new Date(r.timestamp).toISOString().split("T")[0]))
+      ).sort().reverse();
+
+      let streak = 0;
+      const today = new Date().toISOString().split("T")[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+      if (uniqueDates[0] === today || uniqueDates[0] === yesterday) {
+        streak = 1;
+        let currentDate = new Date(uniqueDates[0]);
+        for (let i = 1; i < uniqueDates.length; i++) {
+          const prevDate = new Date(uniqueDates[i]);
+          const diffDays = Math.round((currentDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) {
+            streak++;
+            currentDate = prevDate;
+          } else {
+            break;
+          }
+        }
+      }
+
+      res.json({ streak });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to calculate streak" });
+    }
+  });
+
+  // Get parent details for a student
+  app.get("/api/students/:studentId/parent", async (req: Request, res: Response) => {
+    try {
+      const { studentId } = req.params;
+      const parent = await studentRepository.getParentDetails(studentId);
+      res.json({ parent: parent || null });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch parent details" });
+    }
+  });
+
+  // Update parent details for a student (Admin or Student)
+  app.put("/api/students/:studentId/parent", async (req: Request, res: Response) => {
+    try {
+      const { studentId } = req.params;
+      const student = await studentRepository.findByStudentId(studentId);
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      const parent = await studentRepository.updateParentDetails(studentId, req.body);
+      res.json({ message: "Parent details updated successfully", parent });
+    } catch (error) {
+      console.error("[parent-update] Error:", error);
+      res.status(500).json({ error: "Failed to update parent details" });
+    }
+  });
+
+  // Send direct SMS notification
+  app.post("/api/notifications/sms/send", async (req: Request, res: Response) => {
+    try {
+      const { to, message, studentId, recipientName } = req.body;
+      if (!to || !message) {
+        return res.status(400).json({ error: "Missing 'to' phone number or 'message' text." });
+      }
+
+      const result = await attendanceNotificationService.sendDirectSms({
+        to,
+        message,
+        studentId,
+        recipientName,
+      });
+
+      res.json({
+        success: result.success,
+        message: result.success ? `SMS successfully dispatched to ${to}` : "SMS dispatch failed",
+        details: result,
+      });
+    } catch (error: any) {
+      console.error("[sms-endpoint] Error:", error.message);
+      res.status(500).json({ error: "Internal error sending SMS" });
+    }
+  });
+
+  // Notification logs audit endpoint for admin
+  app.get("/api/notifications/logs", async (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const logs = await attendanceNotificationService.getLogs(limit);
+      res.json({ logs });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch notification logs" });
     }
   });
 
@@ -368,27 +648,76 @@ export async function registerRoutes(
 
   app.get("/api/students", async (_req: Request, res: Response) => {
     try {
-      const students = await storage.getAllStudents();
+      const students = await studentRepository.findAllWithParentStatus();
       res.json({ students });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch students" });
     }
   });
 
-  // --- Face Recognition Routes ---
-
-  // Get all students that have face descriptors registered
-  app.get("/api/students/with-faces", async (_req: Request, res: Response) => {
+  // Admin & Staff: Register / Create New Student
+  app.post("/api/students", async (req: Request, res: Response) => {
     try {
-      const students = await storage.getAllStudents();
-      const studentsWithFaces = students.filter(
-        (s) => s.faceRegistered && s.faceDescriptor && Array.isArray(s.faceDescriptor) && s.faceDescriptor.length === 128
+      const {
+        name,
+        studentId,
+        department,
+        email,
+        phone,
+        batch,
+        rollNumber,
+        sectionId,
+        parentName,
+        parentPhone,
+        parentEmail,
+        relationship,
+        faceDescriptor
+      } = req.body;
+
+      if (!name || !studentId) {
+        return res.status(400).json({ error: "Student Name and Student ID are required" });
+      }
+
+      const existing = await studentRepository.findByStudentId(studentId.trim());
+      if (existing) {
+        return res.status(409).json({ error: `Student with ID "${studentId}" already exists.` });
+      }
+
+      const hasFace = Array.isArray(faceDescriptor) && faceDescriptor.length === 128;
+
+      const created = await studentRepository.create(
+        {
+          name: name.trim(),
+          studentId: studentId.trim(),
+          department: department ? department.trim() : "General",
+          email: email ? email.trim() : null,
+          phone: phone ? phone.trim() : null,
+          password: req.body.password || "student123",
+          faceRegistered: hasFace,
+          faceDescriptor: hasFace ? faceDescriptor : null,
+        } as any,
+        {
+          parentName: parentName ? parentName.trim() : "",
+          phone: parentPhone ? parentPhone.trim() : "",
+          email: parentEmail ? parentEmail.trim() : "",
+          relationship: relationship || "father",
+        }
       );
-      res.json({ students: studentsWithFaces });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch students with faces" });
+
+      if (hasFace) {
+        try {
+          await storage.updateStudentFace(created.id, faceDescriptor);
+        } catch (e) {}
+      }
+
+      res.status(201).json({ success: true, message: "Student registered successfully", student: created });
+    } catch (error: any) {
+      console.error("Student registration error:", error);
+      res.status(500).json({ error: error.message || "Failed to register student" });
     }
   });
+
+  // --- Face Recognition Attendance Submission Route ---
 
   // Submit attendance via face recognition (no IP restriction — admin-initiated)
   app.post("/api/attendance/face", async (req: Request, res: Response) => {
@@ -404,7 +733,7 @@ export async function registerRoutes(
       }
 
       const parsedConfidence = confidence ? Number(confidence) : 0;
-      const parsedLiveness = livenessScore ? Number(livenessScore) : 0;
+      const parsedLiveness = livenessScore !== undefined ? Number(livenessScore) : 1.0;
 
       // Log the face recognition attempt
       await storage.logFaceRecognitionAttempt({
@@ -412,13 +741,13 @@ export async function registerRoutes(
         sessionId: activeSession.id,
         confidence: parsedConfidence,
         livenessScore: parsedLiveness,
-        isLive: parsedLiveness > 0.7,
-        isKnown: parsedConfidence > 45,
-        result: parsedLiveness > 0.7 ? "success" : "spoof",
+        isLive: parsedLiveness >= 0.5,
+        isKnown: parsedConfidence > 40,
+        result: parsedLiveness >= 0.5 ? "success" : "spoof",
         ipAddress: getClientIp(req),
       });
 
-      if (parsedLiveness <= 0.7) {
+      if (parsedLiveness < 0.5) {
         return res.status(400).json({ error: "Liveness check failed (Spoof attempt suspected)" });
       }
 
@@ -443,6 +772,17 @@ export async function registerRoutes(
 
       const wsServer = getWebSocketServer();
       if (wsServer) wsServer.notifyAttendanceRecorded(record);
+
+      // Asynchronously notify Student + Parent/Guardian (decoupled, non-blocking)
+      attendanceNotificationService.notifyAttendance({
+        studentId,
+        studentName: name,
+        department: department || undefined,
+        sessionId: activeSession.id,
+        sessionName: activeSession.name || `Session #${activeSession.id}`,
+        status: "present",
+        timestamp: record.timestamp,
+      }).catch((err) => console.error("[attendance-notification] Face attendance notification error:", err));
 
       res.status(201).json({ record });
     } catch (error) {
@@ -513,6 +853,37 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Absence alerts error:", error);
       res.status(500).json({ error: "Failed to fetch absence alerts" });
+    }
+  });
+
+  // Admin: Dispatch absence alerts to students and their parents
+  app.post("/api/admin/absence-alerts/notify", async (req: Request, res: Response) => {
+    try {
+      const { studentIds, sessionName } = req.body;
+      if (!Array.isArray(studentIds) || studentIds.length === 0) {
+        return res.status(400).json({ error: "studentIds array is required" });
+      }
+
+      let notifiedCount = 0;
+      for (const studentId of studentIds) {
+        const student = await studentRepository.findByStudentId(studentId);
+        if (student) {
+          await attendanceNotificationService.notifyAttendance({
+            studentId,
+            studentName: student.name,
+            department: student.department || undefined,
+            sessionName: sessionName || "Scheduled Class / Session",
+            status: "absent",
+            timestamp: new Date(),
+          });
+          notifiedCount++;
+        }
+      }
+
+      res.json({ message: `Absence notifications dispatched to ${notifiedCount} student(s) and parent(s).`, notifiedCount });
+    } catch (error) {
+      console.error("Dispatch absence alert error:", error);
+      res.status(500).json({ error: "Failed to dispatch absence alerts" });
     }
   });
 

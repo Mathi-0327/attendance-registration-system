@@ -53,6 +53,16 @@ export function initializeTables() {
     CREATE TABLE IF NOT EXISTS parent_details (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       student_id TEXT NOT NULL UNIQUE,
+      parent_name TEXT,
+      relationship TEXT DEFAULT 'father',
+      phone TEXT,
+      email TEXT,
+      alternate_phone TEXT,
+      alternate_email TEXT,
+      emergency_contact TEXT,
+      notify_on_present INTEGER NOT NULL DEFAULT 1,
+      notify_on_late INTEGER NOT NULL DEFAULT 1,
+      notify_on_absent INTEGER NOT NULL DEFAULT 1,
       father_name TEXT,
       father_occupation TEXT,
       father_phone TEXT,
@@ -205,6 +215,22 @@ export function initializeTables() {
       last_updated INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS notification_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id TEXT NOT NULL,
+      recipient_type TEXT NOT NULL,
+      recipient_name TEXT,
+      recipient_contact TEXT NOT NULL,
+      channel TEXT NOT NULL DEFAULT 'email',
+      notification_type TEXT NOT NULL,
+      session_id INTEGER,
+      subject TEXT,
+      status TEXT NOT NULL DEFAULT 'sent',
+      error_message TEXT,
+      sent_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS grace_attendance (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       student_id TEXT NOT NULL,
@@ -216,6 +242,33 @@ export function initializeTables() {
       granted_at INTEGER NOT NULL
     );
   `);
+
+  // Safe dynamic migration for existing parent_details table
+  try {
+    const columns = sqlite.pragma("table_info(parent_details)") as Array<{ name: string }>;
+    const existingColNames = new Set(columns.map(c => c.name));
+
+    const newColumns: Array<{ name: string; type: string }> = [
+      { name: "parent_name", type: "TEXT" },
+      { name: "relationship", type: "TEXT DEFAULT 'father'" },
+      { name: "phone", type: "TEXT" },
+      { name: "email", type: "TEXT" },
+      { name: "alternate_phone", type: "TEXT" },
+      { name: "alternate_email", type: "TEXT" },
+      { name: "emergency_contact", type: "TEXT" },
+      { name: "notify_on_present", type: "INTEGER NOT NULL DEFAULT 1" },
+      { name: "notify_on_late", type: "INTEGER NOT NULL DEFAULT 1" },
+      { name: "notify_on_absent", type: "INTEGER NOT NULL DEFAULT 1" },
+    ];
+
+    for (const col of newColumns) {
+      if (!existingColNames.has(col.name)) {
+        sqlite.exec(`ALTER TABLE parent_details ADD COLUMN ${col.name} ${col.type}`);
+      }
+    }
+  } catch (err: any) {
+    console.warn("[db-init] parent_details migration check note:", err.message);
+  }
 
   console.log("[db-init] All tables initialized successfully.");
 }

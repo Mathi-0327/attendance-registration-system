@@ -234,24 +234,44 @@ npm start
 
 ```
 attendance-register/
-├── client/                 # Frontend React application
+├── backend/               # Node.js + Express API & services
+│   ├── auth/              # Authentication & JWT middleware
+│   ├── docs/              # Swagger / OpenAPI documentation
+│   ├── modules/           # Domain modules (Academic, Attendance, Audit, RBAC...)
+│   ├── services/          # Email, SMS & notification services
+│   ├── index.ts           # Server entry point
+│   ├── routes.ts          # Central router
+│   ├── security.ts        # Comprehensive security middleware
+│   ├── storage.ts         # Database access layer
+│   └── websocket.ts       # Real-time WebSocket server
+│
+├── frontend/              # React + Vite frontend application
 │   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── pages/         # Page components
-│   │   ├── context/       # React Context (state management)
-│   │   └── lib/           # Utility functions
-│   └── public/            # Static assets
+│   │   ├── components/    # UI & feature components
+│   │   ├── pages/         # Page routes (Admin, Student, Attendance...)
+│   │   ├── hooks/         # Custom React hooks
+│   │   ├── context/       # State management context
+│   │   └── lib/           # Utility functions & helpers
+│   └── public/            # Static client assets
 │
-├── server/                # Backend Express application
-│   ├── db.ts             # Database initialization
-│   ├── storage.ts        # Database operations
-│   ├── routes.ts         # API endpoints
-│   ├── websocket.ts      # WebSocket server
-│   └── index.ts          # Server entry point
+├── database/              # SQLite database & Drizzle ORM schemas
+│   ├── schema/            # Domain schemas (auth, academic, attendance)
+│   ├── db.ts              # SQLite connection instance
+│   └── sqlite.db          # Persistent SQLite database
 │
-├── PROJECT_REPORT/        # Comprehensive project documentation
-├── DEPLOYMENT_GUIDE.md    # Deployment instructions
-└── README.md             # This file
+├── shared/                # Shared TypeScript types & contracts
+├── script/                # Build and administrative utility scripts
+│
+├── docs/                  # 📚 Documentation & Reports
+│   ├── guides/            # Setup, VS Code, GitHub & presentation guides
+│   ├── deployment/        # Deployment & Vercel configuration guides
+│   ├── architecture/      # Roadmap, security features & change logs
+│   ├── reports/           # Pre-deployment test reports
+│   └── project-report/    # Academic project report (Chapters 1–8)
+│
+├── Dockerfile             # Container image specification
+├── docker-compose.yml     # Docker multi-service configuration
+└── README.md              # Project overview & quick start
 ```
 
 ---
@@ -338,7 +358,31 @@ Deploy to platforms like:
 - **DigitalOcean** ($6/month)
 - **Heroku** ($7/month)
 
-See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed instructions.
+See [docs/deployment/DEPLOYMENT_GUIDE.md](docs/deployment/DEPLOYMENT_GUIDE.md) for detailed instructions.
+
+---
+
+## 📚 Documentation
+
+Detailed documentation is organized in the [`docs/`](docs/) directory:
+
+- **Guides**:
+  - [VS Code Run Guide](docs/guides/HOW_TO_RUN_IN_VSCODE.md)
+  - [Step-by-Step GitHub Guide](docs/guides/GITHUB_STEP_BY_STEP.md)
+  - [LinkedIn & GitHub Showcase Guide](docs/guides/LINKEDIN_GITHUB_GUIDE.md)
+  - [Presentation Guide](docs/guides/PRESENTATION_GUIDE.md)
+  - [Implementation Guide](docs/guides/IMPLEMENTATION_GUIDE.md)
+  - [Quick Demo Checklist](docs/guides/QUICK_DEMO_CHECKLIST.md)
+- **Deployment**:
+  - [Production Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md)
+  - [Vercel Deployment Guide](docs/deployment/VERCEL_DEPLOYMENT.md)
+- **Architecture & Security**:
+  - [Security Features Deep-Dive](docs/architecture/SECURITY_FEATURES.md)
+  - [Feature Roadmap (AAAS)](docs/architecture/AAAS_ROADMAP.md)
+  - [Complete Features Summary](docs/architecture/COMPLETE_FEATURES_SUMMARY.md)
+- **Reports**:
+  - [Pre-Deployment Test Report](docs/reports/PRE_DEPLOYMENT_TEST_REPORT.md)
+  - [Consolidated Academic Project Report](docs/project-report/CONSOLIDATED_PROJECT_REPORT.md)
 
 ---
 
@@ -435,7 +479,7 @@ If you have any questions or need help:
 
 - 📧 Email: your.email@example.com
 - 💬 Open an [Issue](https://github.com/yourusername/attendance-register/issues)
-- 📖 Check the [Documentation](DEPLOYMENT_GUIDE.md)
+- 📖 Check the [Documentation](docs/deployment/DEPLOYMENT_GUIDE.md)
 
 ---
 

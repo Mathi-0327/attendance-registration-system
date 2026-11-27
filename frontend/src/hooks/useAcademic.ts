@@ -147,6 +147,19 @@ export function useSemesters(courseId: number | null) {
   });
 }
 
+export function useCreateSemester() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, any>) =>
+      apiFetch("/api/academic/semesters", accessToken, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ["semesters", vars.courseId] }),
+  });
+}
+
 // ─── Sections ─────────────────────────────────────────────────────────────────
 
 export function useSections(semesterId: number | null) {
@@ -160,6 +173,19 @@ export function useSections(semesterId: number | null) {
       ),
     select: (d) => d.sections,
     enabled: !!accessToken && !!semesterId,
+  });
+}
+
+export function useCreateSection() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, any>) =>
+      apiFetch("/api/academic/sections", accessToken, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ["sections", vars.semesterId] }),
   });
 }
 

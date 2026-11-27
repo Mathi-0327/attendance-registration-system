@@ -1,6 +1,6 @@
 /**
  * @file script/create-admin.ts
- * @description Command-line script to register a Super Admin user.
+ * @description Command-line script to register or update the Super Admin user.
  */
 
 import { db } from "../database/db";
@@ -9,10 +9,10 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
 async function run() {
-  const username = "mathi";
-  const email = "mathi@attendreg.edu";
-  const password = "password123";
-  const name = "Mathi";
+  const username = "admin";
+  const email = "admin@attendreg.edu";
+  const password = "Admin@2026!";
+  const name = "System Administrator";
 
   console.log("Checking for role 'super_admin'...");
   const [adminRole] = await db.select().from(roles).where(eq(roles.name, "super_admin"));
@@ -87,6 +87,7 @@ async function run() {
   console.log("==========================================");
   console.log(`  Username : ${username}`);
   console.log(`  Email    : ${email}`);
+  console.log(`  Name     : ${name}`);
   console.log(`  Password : ${password}`);
   console.log("==========================================\n");
 }

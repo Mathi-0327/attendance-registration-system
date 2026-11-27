@@ -1,7 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, X, Filter } from "lucide-react";
+import { Search, X, Filter, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 interface SearchAndFilterProps {
@@ -13,7 +13,14 @@ interface SearchAndFilterProps {
   placeholder?: string;
 }
 
-export function SearchAndFilter({ onSearch, onFilter, onSort, hideFilter, hideSort, placeholder }: SearchAndFilterProps) {
+export function SearchAndFilter({
+  onSearch,
+  onFilter,
+  onSort,
+  hideFilter,
+  hideSort,
+  placeholder,
+}: SearchAndFilterProps) {
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
@@ -54,88 +61,148 @@ export function SearchAndFilter({ onSearch, onFilter, onSort, hideFilter, hideSo
     if (onSort) onSort("time", "desc");
   };
 
+  const hasActiveFilters =
+    search ||
+    (!hideFilter &&
+      ((department && department !== "all") ||
+        (status && status !== "all") ||
+        (dateRange && dateRange !== "all")));
+
   return (
-    <div className="space-y-4 p-4 bg-card rounded-lg border">
-      <div className="flex flex-col md:flex-row gap-4">
+    <div className="p-3.5 bg-card/80 backdrop-blur-md rounded-xl border border-border/60 shadow-sm space-y-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        {/* Search Field */}
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder={placeholder || "Search by name, ID, or department..."}
+            placeholder={placeholder || "Search attendee name, student ID, department..."}
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            className="pl-10"
+            className="pl-10 h-10 bg-background/50 border-border/50 focus-visible:ring-primary/20 rounded-lg text-sm"
           />
+          {search && (
+            <button
+              onClick={() => handleSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
+
+        {/* Filter dropdowns */}
         {!hideFilter && (
-          <>
-            <Select value={department} onValueChange={setDepartment}>
-              <SelectTrigger className="w-full md:w-[180px]">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+            <Select
+              value={department}
+              onValueChange={(val) => {
+                setDepartment(val);
+                if (onFilter) {
+                  onFilter({
+                    department: val !== "all" ? val : undefined,
+                    status: status !== "all" ? status : undefined,
+                    dateRange: dateRange !== "all" ? dateRange : undefined,
+                  });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[150px] h-10 bg-background/50 text-xs font-medium">
                 <SelectValue placeholder="Department" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
                 <SelectItem value="CS">Computer Science</SelectItem>
-                <SelectItem value="IT">Information Technology</SelectItem>
-                <SelectItem value="ECE">Electronics</SelectItem>
+                <SelectItem value="IT">Information Tech</SelectItem>
+                <SelectItem value="ECE">Electronics (ECE)</SelectItem>
                 <SelectItem value="MECH">Mechanical</SelectItem>
-                <SelectItem value="OTHER">Other</SelectItem>
+                <SelectItem value="OTHER">Other Depts</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-full md:w-[150px]">
+
+            <Select
+              value={status}
+              onValueChange={(val) => {
+                setStatus(val);
+                if (onFilter) {
+                  onFilter({
+                    department: department !== "all" ? department : undefined,
+                    status: val !== "all" ? val : undefined,
+                    dateRange: dateRange !== "all" ? dateRange : undefined,
+                  });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[130px] h-10 bg-background/50 text-xs font-medium">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="present">Present</SelectItem>
-                <SelectItem value="late">Late</SelectItem>
+                <SelectItem value="present">Present (On-Time)</SelectItem>
+                <SelectItem value="late">Late Arrival</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-full md:w-[150px]">
+
+            <Select
+              value={dateRange}
+              onValueChange={(val) => {
+                setDateRange(val);
+                if (onFilter) {
+                  onFilter({
+                    department: department !== "all" ? department : undefined,
+                    status: status !== "all" ? status : undefined,
+                    dateRange: val !== "all" ? val : undefined,
+                  });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[130px] h-10 bg-background/50 text-xs font-medium">
                 <SelectValue placeholder="Date Range" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Time</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="today">Today Only</SelectItem>
                 <SelectItem value="week">This Week</SelectItem>
                 <SelectItem value="month">This Month</SelectItem>
               </SelectContent>
             </Select>
-          </>
+          </div>
         )}
+
+        {/* Sort */}
         {!hideSort && (
-          <Select value={`${sortBy}-${sortOrder}`} onValueChange={(value) => {
-            const [by, order] = value.split("-");
-            handleSort(by, order);
-          }}>
-            <SelectTrigger className="w-full md:w-[180px]">
-              <SelectValue placeholder="Sort By" />
+          <Select
+            value={`${sortBy}-${sortOrder}`}
+            onValueChange={(value) => {
+              const [by, order] = value.split("-");
+              handleSort(by, order);
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-[150px] h-10 bg-background/50 text-xs font-medium">
+              <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5 opacity-60" />
+              <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="time-desc">Time (Newest)</SelectItem>
-              <SelectItem value="time-asc">Time (Oldest)</SelectItem>
-              <SelectItem value="name-asc">Name (A-Z)</SelectItem>
-              <SelectItem value="name-desc">Name (Z-A)</SelectItem>
-              <SelectItem value="department-asc">Department (A-Z)</SelectItem>
+              <SelectItem value="time-desc">Latest First</SelectItem>
+              <SelectItem value="time-asc">Earliest First</SelectItem>
+              <SelectItem value="name-asc">Name (A–Z)</SelectItem>
+              <SelectItem value="name-desc">Name (Z–A)</SelectItem>
+              <SelectItem value="department-asc">Dept (A–Z)</SelectItem>
             </SelectContent>
           </Select>
         )}
-        {(search || (!hideFilter && ((department && department !== "all") || (status && status !== "all") || (dateRange && dateRange !== "all")))) && (
-          <Button variant="outline" onClick={clearFilters} size="icon">
-            <X className="h-4 w-4" />
+
+        {/* Clear */}
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            onClick={clearFilters}
+            size="sm"
+            className="h-10 text-xs text-muted-foreground hover:text-foreground shrink-0"
+          >
+            Reset
           </Button>
         )}
       </div>
-
-      {((department && department !== "all") || (status && status !== "all") || (dateRange && dateRange !== "all")) && (
-        <Button onClick={handleFilter} variant="outline" className="w-full md:w-auto">
-          <Filter className="h-4 w-4 mr-2" />
-          Apply Filters
-        </Button>
-      )}
     </div>
   );
 }
-
-

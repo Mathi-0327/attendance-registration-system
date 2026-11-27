@@ -35,6 +35,46 @@ export interface EmailPayload {
 let smtpConfig: SmtpConfig | null = null;
 let transporter: nodemailer.Transporter | null = null;
 
+function initFromEnv() {
+  const user = process.env.SMTP_USER || process.env.GMAIL_USER;
+  const pass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD;
+  if (user && pass) {
+    const host = process.env.SMTP_HOST || "smtp.gmail.com";
+    const port = Number(process.env.SMTP_PORT) || 465;
+    const secure = process.env.SMTP_SECURE === "false" ? false : port === 465;
+    const fromName = process.env.SMTP_FROM_NAME || "AttendReg Notifications";
+    const fromEmail = process.env.SMTP_FROM_EMAIL || user;
+
+    smtpConfig = {
+      host,
+      port,
+      secure,
+      user,
+      pass,
+      fromName,
+      fromEmail,
+    };
+
+    const isGmail = host.includes("gmail") || user.includes("@gmail.com");
+    transporter = nodemailer.createTransport(
+      isGmail
+        ? {
+            service: "gmail",
+            auth: { user, pass },
+          }
+        : {
+            host,
+            port,
+            secure,
+            auth: { user, pass },
+          }
+    );
+    console.log(`[notification] Auto-configured Gmail/SMTP for ${user}`);
+  }
+}
+
+initFromEnv();
+
 export const notificationService = {
   // ── Config Management ──────────────────────
 
@@ -49,12 +89,18 @@ export const notificationService = {
   },
 
   getSmtpConfig(): Omit<SmtpConfig, "pass"> | null {
+    if (!smtpConfig) {
+      initFromEnv();
+    }
     if (!smtpConfig) return null;
     const { pass: _, ...safe } = smtpConfig;
     return safe;
   },
 
   isConfigured(): boolean {
+    if (!smtpConfig) {
+      initFromEnv();
+    }
     return !!smtpConfig && !!transporter;
   },
 

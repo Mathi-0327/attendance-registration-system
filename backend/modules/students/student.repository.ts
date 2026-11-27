@@ -39,10 +39,29 @@ export class StudentRepository {
   }
 
   /**
-   * Create a new student. Inserts into legacy students, authUsers (as a Student user),
-   * and creates a studentProfile and parentDetails record.
+   * Create a new student with optional or mandatory parent details.
    */
-  async create(data: InsertLegacyStudent): Promise<LegacyStudent> {
+  async create(
+    data: InsertLegacyStudent,
+    parentData?: {
+      parentName?: string;
+      relationship?: string;
+      phone?: string;
+      email?: string;
+      alternatePhone?: string;
+      alternateEmail?: string;
+      emergencyContact?: string;
+      fatherName?: string;
+      fatherPhone?: string;
+      fatherEmail?: string;
+      motherName?: string;
+      motherPhone?: string;
+      motherEmail?: string;
+      guardianName?: string;
+      guardianPhone?: string;
+      guardianEmail?: string;
+    }
+  ): Promise<LegacyStudent> {
     // 1. Insert into legacy students table
     const [legacyStudent] = await db
       .insert(legacyStudents)
@@ -56,19 +75,87 @@ export class StudentRepository {
     await db.insert(studentProfiles).values({
       studentId: legacyStudent.studentId,
       permanentAddress: "",
-      profileCompletion: 10, // Initial completion
+      profileCompletion: parentData?.parentName ? 30 : 10,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    // 3. Create parent details placeholder
+    // 3. Create parent details record with provided parent info
+    const relationship = parentData?.relationship || "father";
+    const parentName = parentData?.parentName || parentData?.fatherName || parentData?.motherName || parentData?.guardianName || "";
+    const parentPhone = parentData?.phone || parentData?.fatherPhone || parentData?.motherPhone || parentData?.guardianPhone || "";
+    const parentEmail = parentData?.email || parentData?.fatherEmail || parentData?.motherEmail || parentData?.guardianEmail || "";
+
     await db.insert(parentDetails).values({
       studentId: legacyStudent.studentId,
+      parentName,
+      relationship,
+      phone: parentPhone,
+      email: parentEmail,
+      alternatePhone: parentData?.alternatePhone || null,
+      alternateEmail: parentData?.alternateEmail || null,
+      emergencyContact: parentData?.emergencyContact || null,
+      fatherName: relationship === "father" ? parentName : (parentData?.fatherName || null),
+      fatherPhone: relationship === "father" ? parentPhone : (parentData?.fatherPhone || null),
+      fatherEmail: relationship === "father" ? parentEmail : (parentData?.fatherEmail || null),
+      motherName: relationship === "mother" ? parentName : (parentData?.motherName || null),
+      motherPhone: relationship === "mother" ? parentPhone : (parentData?.motherPhone || null),
+      motherEmail: relationship === "mother" ? parentEmail : (parentData?.motherEmail || null),
+      guardianName: (relationship === "guardian" || relationship === "other") ? parentName : (parentData?.guardianName || null),
+      guardianPhone: (relationship === "guardian" || relationship === "other") ? parentPhone : (parentData?.guardianPhone || null),
+      guardianEmail: (relationship === "guardian" || relationship === "other") ? parentEmail : (parentData?.guardianEmail || null),
+      primaryContact: (relationship === "mother" ? "mother" : (relationship === "guardian" || relationship === "other" ? "guardian" : "father")),
+      notifyOnPresent: true,
+      notifyOnLate: true,
+      notifyOnAbsent: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
     return legacyStudent;
+  }
+
+  /**
+   * Get all students with their parent details and linkage status
+   */
+  async findAllWithParentStatus(): Promise<Array<LegacyStudent & { parentLinked: boolean; parent?: ParentDetail }>> {
+    const allStudents = await this.findAll();
+    const allParents = await db.select().from(parentDetails);
+    const parentMap = new Map<string, ParentDetail>();
+    for (const p of allParents) {
+      parentMap.set(p.studentId, p);
+    }
+
+    return allStudents.map(student => {
+      const parent = parentMap.get(student.studentId);
+      const isLinked = !!(
+        parent &&
+        ((parent.parentName && (parent.phone || parent.email)) ||
+         (parent.fatherName && (parent.fatherPhone || parent.fatherEmail)) ||
+         (parent.motherName && (parent.motherPhone || parent.motherEmail)) ||
+         (parent.guardianName && (parent.guardianPhone || parent.guardianEmail)))
+      );
+
+      return {
+        ...student,
+        parentLinked: isLinked,
+        parent: parent || undefined,
+      };
+    });
+  }
+
+  /**
+   * Update student basic information
+   */
+  async update(id: number, data: Partial<InsertLegacyStudent>): Promise<LegacyStudent> {
+    const [updated] = await db
+      .update(legacyStudents)
+      .set({
+        ...data,
+      })
+      .where(eq(legacyStudents.id, id))
+      .returning();
+    return updated;
   }
 
   /**
@@ -143,21 +230,35 @@ export class StudentRepository {
   }
 
   /**
-   * Update parent details
+   * Upsert / update parent details
    */
   async updateParentDetails(
     studentId: string,
     data: Partial<Omit<ParentDetail, "id" | "studentId" | "createdAt">>
   ): Promise<ParentDetail> {
-    const [updated] = await db
-      .update(parentDetails)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(parentDetails.studentId, studentId))
-      .returning();
-    return updated;
+    const existing = await this.getParentDetails(studentId);
+    if (existing) {
+      const [updated] = await db
+        .update(parentDetails)
+        .set({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .where(eq(parentDetails.studentId, studentId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(parentDetails)
+        .values({
+          studentId,
+          ...data,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any)
+        .returning();
+      return created;
+    }
   }
 }
 

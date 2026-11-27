@@ -20,9 +20,10 @@ import { motion } from "framer-motion";
 import type { AttendanceRecord } from "@/context/SystemContext";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 import { Link } from "wouter";
+import { StudentTimetableView } from "@/components/StudentTimetableView";
 
 interface Student {
-  id: string;
+  id: string | number;
   studentId: string;
   name: string;
   email?: string;
@@ -31,15 +32,42 @@ interface Student {
   year?: string;
 }
 
+interface ParentInfo {
+  parentName?: string;
+  relationship?: string;
+  phone?: string;
+  email?: string;
+  alternatePhone?: string;
+  alternateEmail?: string;
+  emergencyContact?: string;
+  notifyOnPresent?: boolean;
+  notifyOnLate?: boolean;
+  notifyOnAbsent?: boolean;
+}
+
+function maskEmail(email?: string): string {
+  if (!email || !email.includes("@")) return "—";
+  const [user, domain] = email.split("@");
+  if (user.length <= 2) return `${user[0]}*@${domain}`;
+  return `${user[0]}${"*".repeat(Math.min(user.length - 2, 6))}${user[user.length - 1]}@${domain}`;
+}
+
+function maskPhone(phone?: string): string {
+  if (!phone || phone.length < 4) return "—";
+  const visible = phone.slice(-4);
+  return `${"*".repeat(Math.max(phone.length - 4, 4))}${visible}`;
+}
+
 export default function StudentPortal() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [student, setStudent] = useState<Student | null>(null);
+  const [parent, setParent] = useState<ParentInfo | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [streak, setStreak] = useState(0);
 
-  // Registration form state
+  // Registration form state with Parent/Guardian fields
   const [regForm, setRegForm] = useState({
     studentId: "",
     name: "",
@@ -49,6 +77,14 @@ export default function StudentPortal() {
     year: "",
     password: "",
     confirmPassword: "",
+    // Parent / Guardian Info
+    parentName: "",
+    parentRelationship: "father",
+    parentPhone: "",
+    parentEmail: "",
+    parentAlternatePhone: "",
+    parentAlternateEmail: "",
+    emergencyContact: "",
   });
 
   // Login form state
@@ -102,6 +138,12 @@ export default function StudentPortal() {
         setStreak(data.streak || 0);
       }
 
+      // Load linked parent/guardian details
+      const parentRes = await fetch(`/api/students/${studentId}/parent`);
+      if (parentRes.ok) {
+        const data = await parentRes.json();
+        setParent(data.parent || null);
+      }
     } catch (error) {
       console.error("Error loading student data:", error);
     }
@@ -120,25 +162,47 @@ export default function StudentPortal() {
       return;
     }
 
+    if (!regForm.parentName || regForm.parentName.trim().length < 2) {
+      toast.error("Parent/Guardian full name is required");
+      return;
+    }
+
+    if (!regForm.parentPhone || regForm.parentPhone.trim().length < 10) {
+      toast.error("Valid parent mobile number (min 10 digits) is required");
+      return;
+    }
+
+    if (!regForm.parentEmail || !regForm.parentEmail.includes("@")) {
+      toast.error("Valid parent email address is required for notifications");
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch("/api/students/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          studentId: regForm.studentId,
-          name: regForm.name,
-          email: regForm.email || undefined,
-          phone: regForm.phone || undefined,
+          studentId: regForm.studentId.trim(),
+          name: regForm.name.trim(),
+          email: regForm.email ? regForm.email.trim() : undefined,
+          phone: regForm.phone ? regForm.phone.trim() : undefined,
           department: regForm.department,
-          year: regForm.year || undefined,
+          year: regForm.year ? regForm.year.trim() : undefined,
           password: regForm.password,
+          parentName: regForm.parentName.trim(),
+          parentRelationship: regForm.parentRelationship,
+          parentPhone: regForm.parentPhone.trim(),
+          parentEmail: regForm.parentEmail.trim(),
+          parentAlternatePhone: regForm.parentAlternatePhone ? regForm.parentAlternatePhone.trim() : undefined,
+          parentAlternateEmail: regForm.parentAlternateEmail ? regForm.parentAlternateEmail.trim() : undefined,
+          emergencyContact: regForm.emergencyContact ? regForm.emergencyContact.trim() : undefined,
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        toast.success("Registration successful! Please login.");
+        toast.success("Registration successful! Parent details linked. Please login.");
         setRegForm({
           studentId: "",
           name: "",
@@ -148,6 +212,13 @@ export default function StudentPortal() {
           year: "",
           password: "",
           confirmPassword: "",
+          parentName: "",
+          parentRelationship: "father",
+          parentPhone: "",
+          parentEmail: "",
+          parentAlternatePhone: "",
+          parentAlternateEmail: "",
+          emergencyContact: "",
         });
         setActiveTab("login");
       } else {
@@ -283,7 +354,7 @@ export default function StudentPortal() {
         <main className="flex-1 container py-8 px-4 md:px-8 max-w-4xl">
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold tracking-tight text-foreground mb-2">Student Portal</h1>
-            <p className="text-muted-foreground">Register or login to access your attendance records</p>
+            <p className="text-muted-foreground">Register or login to access your attendance records and parent alert settings</p>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -310,7 +381,7 @@ export default function StudentPortal() {
                       <Label htmlFor="login-student-id">Student ID</Label>
                       <Input
                         id="login-student-id"
-                        placeholder="Enter your Student ID"
+                        placeholder="Enter your Student ID (e.g. 4098)"
                         value={loginForm.studentId}
                         onChange={(e) => setLoginForm({ ...loginForm, studentId: e.target.value })}
                         required
@@ -339,106 +410,201 @@ export default function StudentPortal() {
               <Card>
                 <CardHeader>
                   <CardTitle>Student Registration</CardTitle>
-                  <CardDescription>Create an account to track your attendance</CardDescription>
+                  <CardDescription>
+                    Create your student profile and link your parent/guardian for attendance notifications
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleRegister} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="reg-student-id">Student ID *</Label>
-                        <Input
-                          id="reg-student-id"
-                          placeholder="Enter your Student ID"
-                          value={regForm.studentId}
-                          onChange={(e) => setRegForm({ ...regForm, studentId: e.target.value })}
-                          required
-                        />
+                  <form onSubmit={handleRegister} className="space-y-6">
+                    {/* SECTION 1: STUDENT INFORMATION */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 pb-2 border-b">
+                        <User className="h-5 w-5 text-primary" />
+                        <h3 className="font-semibold text-foreground">1. Student Information</h3>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="reg-name">Full Name *</Label>
-                        <Input
-                          id="reg-name"
-                          placeholder="Enter your full name"
-                          value={regForm.name}
-                          onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="reg-department">Department *</Label>
-                        <Select
-                          value={regForm.department}
-                          onValueChange={(value) => setRegForm({ ...regForm, department: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select Department" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="CS">Computer Science</SelectItem>
-                            <SelectItem value="IT">Information Technology</SelectItem>
-                            <SelectItem value="ECE">Electronics</SelectItem>
-                            <SelectItem value="MECH">Mechanical</SelectItem>
-                            <SelectItem value="OTHER">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="reg-year">Year (Optional)</Label>
-                        <Input
-                          id="reg-year"
-                          placeholder="e.g., 2024, 1st Year"
-                          value={regForm.year}
-                          onChange={(e) => setRegForm({ ...regForm, year: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="reg-email">Email (Optional)</Label>
-                        <Input
-                          id="reg-email"
-                          type="email"
-                          placeholder="your.email@example.com"
-                          value={regForm.email}
-                          onChange={(e) => setRegForm({ ...regForm, email: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="reg-phone">Phone (Optional)</Label>
-                        <Input
-                          id="reg-phone"
-                          placeholder="+1234567890"
-                          value={regForm.phone}
-                          onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })}
-                        />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-student-id">Student ID *</Label>
+                          <Input
+                            id="reg-student-id"
+                            placeholder="e.g., 2026CS101"
+                            value={regForm.studentId}
+                            onChange={(e) => setRegForm({ ...regForm, studentId: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-name">Full Name *</Label>
+                          <Input
+                            id="reg-name"
+                            placeholder="Enter full name"
+                            value={regForm.name}
+                            onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-department">Department *</Label>
+                          <Select
+                            value={regForm.department}
+                            onValueChange={(value) => setRegForm({ ...regForm, department: value })}
+                          >
+                            <SelectTrigger id="reg-department">
+                              <SelectValue placeholder="Select Department" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CS">Computer Science</SelectItem>
+                              <SelectItem value="IT">Information Technology</SelectItem>
+                              <SelectItem value="ECE">Electronics & Comm.</SelectItem>
+                              <SelectItem value="MECH">Mechanical Engg.</SelectItem>
+                              <SelectItem value="CIVIL">Civil Engineering</SelectItem>
+                              <SelectItem value="AI_DS">AI & Data Science</SelectItem>
+                              <SelectItem value="OTHER">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-year">Academic Year (Optional)</Label>
+                          <Input
+                            id="reg-year"
+                            placeholder="e.g., 1st Year, 2nd Year"
+                            value={regForm.year}
+                            onChange={(e) => setRegForm({ ...regForm, year: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-email">Student Email (Optional)</Label>
+                          <Input
+                            id="reg-email"
+                            type="email"
+                            placeholder="student@example.edu"
+                            value={regForm.email}
+                            onChange={(e) => setRegForm({ ...regForm, email: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-phone">Student Phone (Optional)</Label>
+                          <Input
+                            id="reg-phone"
+                            placeholder="e.g., +91 9876543210"
+                            value={regForm.phone}
+                            onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-password">Password *</Label>
+                          <Input
+                            id="reg-password"
+                            type="password"
+                            placeholder="Minimum 6 characters"
+                            value={regForm.password}
+                            onChange={(e) => setRegForm({ ...regForm, password: e.target.value })}
+                            required
+                            minLength={6}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-confirm-password">Confirm Password *</Label>
+                          <Input
+                            id="reg-confirm-password"
+                            type="password"
+                            placeholder="Re-enter password"
+                            value={regForm.confirmPassword}
+                            onChange={(e) => setRegForm({ ...regForm, confirmPassword: e.target.value })}
+                            required
+                            minLength={6}
+                          />
+                        </div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="reg-password">Password *</Label>
-                        <Input
-                          id="reg-password"
-                          type="password"
-                          placeholder="Minimum 6 characters"
-                          value={regForm.password}
-                          onChange={(e) => setRegForm({ ...regForm, password: e.target.value })}
-                          required
-                          minLength={6}
-                        />
+
+                    {/* SECTION 2: PARENT / GUARDIAN INFORMATION (MANDATORY) */}
+                    <div className="space-y-4 pt-2">
+                      <div className="flex items-center justify-between pb-2 border-b">
+                        <div className="flex items-center gap-2">
+                          <Bell className="h-5 w-5 text-primary" />
+                          <h3 className="font-semibold text-foreground">2. Parent / Guardian Details</h3>
+                        </div>
+                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20 font-medium">
+                          Mandatory for Alerts
+                        </Badge>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="reg-confirm-password">Confirm Password *</Label>
-                        <Input
-                          id="reg-confirm-password"
-                          type="password"
-                          placeholder="Confirm your password"
-                          value={regForm.confirmPassword}
-                          onChange={(e) => setRegForm({ ...regForm, confirmPassword: e.target.value })}
-                          required
-                          minLength={6}
-                        />
+                      <p className="text-xs text-muted-foreground -mt-2">
+                        Attendance notifications (Present, Late, Absent) will be automatically dispatched to this contact.
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-parent-name">Parent / Guardian Full Name *</Label>
+                          <Input
+                            id="reg-parent-name"
+                            placeholder="e.g., Ramesh Kumar"
+                            value={regForm.parentName}
+                            onChange={(e) => setRegForm({ ...regForm, parentName: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-parent-relation">Relationship *</Label>
+                          <Select
+                            value={regForm.parentRelationship}
+                            onValueChange={(value) => setRegForm({ ...regForm, parentRelationship: value })}
+                          >
+                            <SelectTrigger id="reg-parent-relation">
+                              <SelectValue placeholder="Select Relationship" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="father">Father</SelectItem>
+                              <SelectItem value="mother">Mother</SelectItem>
+                              <SelectItem value="guardian">Legal Guardian</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-parent-phone">Parent Mobile Number *</Label>
+                          <Input
+                            id="reg-parent-phone"
+                            placeholder="e.g., +91 9876543210"
+                            value={regForm.parentPhone}
+                            onChange={(e) => setRegForm({ ...regForm, parentPhone: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-parent-email">Parent Email Address *</Label>
+                          <Input
+                            id="reg-parent-email"
+                            type="email"
+                            placeholder="parent@example.com"
+                            value={regForm.parentEmail}
+                            onChange={(e) => setRegForm({ ...regForm, parentEmail: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-parent-alt-phone">Alternate Mobile (Optional)</Label>
+                          <Input
+                            id="reg-parent-alt-phone"
+                            placeholder="e.g., +91 9876500000"
+                            value={regForm.parentAlternatePhone}
+                            onChange={(e) => setRegForm({ ...regForm, parentAlternatePhone: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-emergency">Emergency Contact (Optional)</Label>
+                          <Input
+                            id="reg-emergency"
+                            placeholder="Emergency contact number"
+                            value={regForm.emergencyContact}
+                            onChange={(e) => setRegForm({ ...regForm, emergencyContact: e.target.value })}
+                          />
+                        </div>
                       </div>
                     </div>
-                    <Button type="submit" className="w-full" disabled={loading}>
-                      {loading ? "Registering..." : "Register"}
+
+                    <Button type="submit" className="w-full mt-6 h-11 text-base font-medium" disabled={loading}>
+                      {loading ? "Registering & Linking Parent..." : "Register & Link Parent"}
                     </Button>
                   </form>
                 </CardContent>
@@ -450,7 +616,6 @@ export default function StudentPortal() {
     );
   }
 
-  // Authenticated view
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
@@ -469,15 +634,15 @@ export default function StudentPortal() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="timetable">📅 Timetable</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="profile">Profile</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
-            {/* Statistics Cards */}
             <div className="grid gap-4 md:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -526,7 +691,57 @@ export default function StudentPortal() {
               </Card>
             </div>
 
-            {/* Recent Attendance */}
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="h-5 w-5 text-primary" />
+                    <CardTitle className="text-base font-semibold">Linked Parent / Guardian & Alerts</CardTitle>
+                  </div>
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-xs font-medium">
+                    ✓ Real-Time Alerts Active
+                  </Badge>
+                </div>
+                <CardDescription>
+                  Attendance notifications are delivered to your registered guardian automatically on Present, Late, and Absent events.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {parent ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1 text-sm">
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Guardian Name:</span>
+                      <p className="font-semibold text-foreground flex items-center gap-1.5">
+                        {parent.parentName || "Registered Guardian"}
+                        {parent.relationship && (
+                          <Badge variant="secondary" className="capitalize text-xs font-normal">
+                            {parent.relationship}
+                          </Badge>
+                        )}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Notification Mobile:</span>
+                      <p className="font-mono text-foreground font-medium">
+                        {maskPhone(parent.phone)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Notification Email:</span>
+                      <p className="font-mono text-foreground font-medium">
+                        {maskEmail(parent.email)}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 text-muted-foreground text-sm py-1">
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                    <span>Parent details are linked to your student profile.</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
@@ -582,6 +797,10 @@ export default function StudentPortal() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="timetable" className="space-y-6">
+            <StudentTimetableView />
           </TabsContent>
 
           <TabsContent value="history">
@@ -697,7 +916,7 @@ export default function StudentPortal() {
             <Card>
               <CardHeader>
                 <CardTitle>Profile Settings</CardTitle>
-                <CardDescription>Manage your profile information</CardDescription>
+                <CardDescription>Manage your profile and linked guardian information</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-col items-center justify-center p-8 space-y-4 text-center">
@@ -717,4 +936,4 @@ export default function StudentPortal() {
       </main>
     </div>
   );
-}
+};

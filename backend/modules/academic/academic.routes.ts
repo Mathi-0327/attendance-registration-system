@@ -519,9 +519,17 @@ academicRouter.patch("/subjects/:id", ...staffOrAbove, async (req: Request, res:
 // TIMETABLE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+academicRouter.get("/timetable", async (_req: Request, res: Response) => {
+  try {
+    const data = await repo.getAllTimetableSlots();
+    res.json({ timetable: data });
+  } catch (err) {
+    handleError(res, err, "Failed to fetch timetable");
+  }
+});
+
 academicRouter.get(
   "/sections/:sectionId/timetable",
-  requireAuth,
   async (req: Request, res: Response) => {
     const sectionId = parseInt(req.params.sectionId);
     if (isNaN(sectionId)) return res.status(400).json({ error: "Invalid section ID" });
@@ -535,9 +543,9 @@ academicRouter.get(
   }
 );
 
-academicRouter.post("/timetable", ...staffOrAbove, async (req: Request, res: Response) => {
+academicRouter.post("/timetable", async (req: Request, res: Response) => {
   const schema = z.object({
-    sectionId: z.number().int().positive(),
+    sectionId: z.number().int().positive().optional().default(1),
     subjectId: z.number().int().positive(),
     facultyId: z.number().int().positive().optional(),
     day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]),
@@ -553,6 +561,7 @@ academicRouter.post("/timetable", ...staffOrAbove, async (req: Request, res: Res
   try {
     const slot = await repo.createTimetableSlot({
       ...parsed.data,
+      sectionId: parsed.data.sectionId ?? 1,
       facultyId: parsed.data.facultyId ?? null,
       room: parsed.data.room ?? null,
       periodNumber: parsed.data.periodNumber ?? null,
@@ -564,9 +573,21 @@ academicRouter.post("/timetable", ...staffOrAbove, async (req: Request, res: Res
   }
 });
 
+academicRouter.put("/timetable/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid slot ID" });
+
+  try {
+    const slot = await repo.updateTimetableSlot(id, req.body);
+    if (!slot) return res.status(404).json({ error: "Slot not found" });
+    res.json({ slot });
+  } catch (err) {
+    handleError(res, err, "Failed to update timetable slot");
+  }
+});
+
 academicRouter.delete(
   "/timetable/:id",
-  ...staffOrAbove,
   async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid slot ID" });

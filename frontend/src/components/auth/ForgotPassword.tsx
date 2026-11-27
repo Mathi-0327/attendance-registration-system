@@ -64,118 +64,120 @@ export function ForgotPassword({ onBack }: ForgotPasswordProps) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.3 }}
-      className="w-full max-w-md mx-auto"
+      className="w-full"
     >
-      <Card className="border-slate-800 bg-slate-900/65 backdrop-blur-md shadow-2xl">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold tracking-tight text-slate-100 flex items-center gap-2">
-            <Lock className="w-5 h-5 text-blue-500" />
-            Reset Password
-          </CardTitle>
-          <CardDescription className="text-slate-400">
-            {step === "request"
-              ? "Enter your email to receive an authorization code"
-              : "Verify OTP and configure your new password"}
-          </CardDescription>
-        </CardHeader>
+      <div className="space-y-1 mb-6">
+        <h2 className="text-xl font-bold font-heading tracking-tight text-foreground flex items-center gap-2">
+          <Lock className="w-5 h-5 text-primary" />
+          Reset Password
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {step === "request"
+            ? "Enter your email to receive an authorization code"
+            : "Verify OTP and configure your new password"}
+        </p>
+      </div>
 
-        {step === "request" ? (
-          <form onSubmit={handleRequest}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-slate-300">Email Address</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4.5 w-4.5 text-slate-500" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="name@institution.edu"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="pl-10 border-slate-700 bg-slate-950 text-slate-100 focus-visible:ring-blue-500 focus-visible:border-blue-500"
-                  />
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex flex-col gap-3">
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-lg hover:shadow-blue-500/20"
-              >
-                {submitting ? "Sending..." : "Send Verification Code"}
-                {!submitting && <Send className="w-4 h-4 ml-2" />}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={onBack}
-                className="w-full text-slate-400 hover:text-slate-200"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Login
-              </Button>
-            </CardFooter>
-          </form>
-        ) : (
-          <form onSubmit={handleReset}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="otp" className="text-slate-300">6-Digit Code</Label>
-                <div className="relative">
-                  <KeyRound className="absolute left-3 top-3 h-4.5 w-4.5 text-slate-500" />
-                  <Input
-                    id="otp"
-                    type="text"
-                    maxLength={6}
-                    placeholder="123456"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    required
-                    className="pl-10 tracking-widest font-mono border-slate-700 bg-slate-950 text-slate-100"
-                  />
-                </div>
-              </div>
+      {step === "request" ? (
+        <form onSubmit={handleRequest} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email" className="text-sm font-medium text-foreground">
+              Email Address
+            </Label>
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@institution.edu"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="pl-10 h-11 rounded-xl bg-background border-input text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/20"
+              />
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="newPassword" className="text-slate-300">New Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4.5 w-4.5 text-slate-500" />
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    placeholder="••••••••"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    className="pl-10 border-slate-700 bg-slate-950 text-slate-100"
-                  />
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex flex-col gap-3">
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-lg"
-              >
-                {submitting ? "Resetting..." : "Complete Password Reset"}
-                {!submitting && <CheckCircle2 className="w-4 h-4 ml-2" />}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setStep("request")}
-                className="w-full text-slate-400 hover:text-slate-200"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Resend Code
-              </Button>
-            </CardFooter>
-          </form>
-        )}
-      </Card>
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2"
+            >
+              {submitting ? "Sending..." : "Send Verification Code"}
+              {!submitting && <Send className="w-4 h-4" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onBack}
+              className="w-full h-10 text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Sign In
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <form onSubmit={handleReset} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="otp" className="text-sm font-medium text-foreground">
+              6-Digit Code
+            </Label>
+            <div className="relative">
+              <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                id="otp"
+                type="text"
+                maxLength={6}
+                placeholder="123456"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                required
+                className="pl-10 tracking-widest font-mono h-11 rounded-xl bg-background border-input text-foreground"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="newPassword" className="text-sm font-medium text-foreground">
+              New Password
+            </Label>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                id="newPassword"
+                type="password"
+                placeholder="••••••••"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                className="pl-10 h-11 rounded-xl bg-background border-input text-foreground"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2"
+            >
+              {submitting ? "Resetting..." : "Complete Password Reset"}
+              {!submitting && <CheckCircle2 className="w-4 h-4" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setStep("request")}
+              className="w-full h-10 text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Resend Code
+            </Button>
+          </div>
+        </form>
+      )}
     </motion.div>
   );
 }

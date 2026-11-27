@@ -73,20 +73,34 @@ export const parentDetails = sqliteTable("parent_details", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   studentId: text("student_id").notNull().unique(), // FK → students.studentId
 
-  // Father
+  // Primary Unified Parent/Guardian fields
+  parentName: text("parent_name"),
+  relationship: text("relationship").default("father"), // 'father' | 'mother' | 'guardian' | 'other'
+  phone: text("phone"),
+  email: text("email"),
+  alternatePhone: text("alternate_phone"),
+  alternateEmail: text("alternate_email"),
+  emergencyContact: text("emergency_contact"),
+
+  // Notification Preferences
+  notifyOnPresent: integer("notify_on_present", { mode: "boolean" }).notNull().default(true),
+  notifyOnLate: integer("notify_on_late", { mode: "boolean" }).notNull().default(true),
+  notifyOnAbsent: integer("notify_on_absent", { mode: "boolean" }).notNull().default(true),
+
+  // Father (Detailed/Legacy)
   fatherName: text("father_name"),
   fatherOccupation: text("father_occupation"),
   fatherPhone: text("father_phone"),
   fatherEmail: text("father_email"),
   fatherAadhar: text("father_aadhar"),
 
-  // Mother
+  // Mother (Detailed/Legacy)
   motherName: text("mother_name"),
   motherOccupation: text("mother_occupation"),
   motherPhone: text("mother_phone"),
   motherEmail: text("mother_email"),
 
-  // Guardian (if different from parents)
+  // Guardian (Detailed/Legacy)
   guardianName: text("guardian_name"),
   guardianRelation: text("guardian_relation"),
   guardianPhone: text("guardian_phone"),
@@ -102,6 +116,26 @@ export const parentDetails = sqliteTable("parent_details", {
 
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+// ─────────────────────────────────────────────
+// NOTIFICATION AUDIT LOGS
+// ─────────────────────────────────────────────
+
+export const notificationLogs = sqliteTable("notification_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  studentId: text("student_id").notNull(),
+  recipientType: text("recipient_type").notNull(), // 'student' | 'parent'
+  recipientName: text("recipient_name"),
+  recipientContact: text("recipient_contact").notNull(), // email or mobile number
+  channel: text("channel").notNull().default("email"), // 'email' | 'sms' | 'whatsapp' | 'push'
+  notificationType: text("notification_type").notNull(), // 'present' | 'late' | 'absent' | 'warning'
+  sessionId: integer("session_id"),
+  subject: text("subject"),
+  status: text("status").notNull().default("sent"), // 'sent' | 'failed' | 'queued'
+  errorMessage: text("error_message"),
+  sentAt: integer("sent_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
 // ─────────────────────────────────────────────
@@ -354,6 +388,7 @@ export const correctionRequestSchema = z.object({
 
 export type StudentProfile = typeof studentProfiles.$inferSelect;
 export type ParentDetail = typeof parentDetails.$inferSelect;
+export type NotificationLog = typeof notificationLogs.$inferSelect;
 export type FaceEmbedding = typeof faceEmbeddings.$inferSelect;
 export type FaceRecognitionLog = typeof faceRecognitionLogs.$inferSelect;
 export type AttendanceSession = typeof attendanceSessions.$inferSelect;

@@ -315,15 +315,24 @@ export interface StudentProfile {
 }
 
 export interface ParentDetails {
+  parentName?: string;
+  relationship?: "father" | "mother" | "guardian" | "other" | string;
+  phone?: string;
+  email?: string;
+  alternatePhone?: string;
+  alternateEmail?: string;
+  emergencyContact?: string;
+  notifyOnPresent?: boolean;
+  notifyOnLate?: boolean;
+  notifyOnAbsent?: boolean;
+  // Legacy / detailed fields
   fatherName?: string;
   motherName?: string;
   guardianName?: string;
   parentEmail?: string;
   parentMobile?: string;
   occupation?: string;
-  relationship?: string;
   address?: string;
-  emergencyContact?: string;
 }
 
 // ─────────────────────────────────────────────

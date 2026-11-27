@@ -299,6 +299,31 @@ export async function updateSubject(
 
 // ─── Timetable ────────────────────────────────────────────────────────────────
 
+export async function getAllTimetableSlots() {
+  return db
+    .select({
+      id: timetable.id,
+      sectionId: timetable.sectionId,
+      subjectId: timetable.subjectId,
+      facultyId: timetable.facultyId,
+      day: timetable.day,
+      startTime: timetable.startTime,
+      endTime: timetable.endTime,
+      room: timetable.room,
+      periodNumber: timetable.periodNumber,
+      isActive: timetable.isActive,
+      createdAt: timetable.createdAt,
+      subjectName: subjects.name,
+      subjectCode: subjects.code,
+      subjectType: subjects.type,
+      subjectCredits: subjects.credits,
+    })
+    .from(timetable)
+    .leftJoin(subjects, eq(timetable.subjectId, subjects.id))
+    .where(eq(timetable.isActive, true))
+    .orderBy(asc(timetable.day), asc(timetable.startTime));
+}
+
 export async function getTimetableBySection(sectionId: number): Promise<TimetableSlot[]> {
   return db
     .select()
@@ -313,6 +338,18 @@ export async function createTimetableSlot(
   const [row] = await db
     .insert(timetable)
     .values({ ...data, createdAt: new Date() })
+    .returning();
+  return row;
+}
+
+export async function updateTimetableSlot(
+  id: number,
+  data: Partial<Omit<TimetableSlot, "id" | "createdAt">>
+): Promise<TimetableSlot | undefined> {
+  const [row] = await db
+    .update(timetable)
+    .set(data)
+    .where(eq(timetable.id, id))
     .returning();
   return row;
 }
