@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 const MAX_SAMPLES = 3;
 const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
+const FALLBACK_MODEL_URL = "https://raw.githubusercontent.com/vladmandic/face-api/master/model/";
 
 // Web Audio API synthesized chimes for instant user feedback
 function playBeep(type: "capture" | "complete" | "error") {
@@ -94,12 +95,22 @@ export function FaceRegistration() {
     const loadModels = async () => {
       try {
         setModelLoadingText("Initializing high-speed face models...");
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        ]);
+        try {
+          await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+            faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+          ]);
+        } catch (primaryErr) {
+          console.warn("Primary CDN face models failed, retrying with fallback CDN...", primaryErr);
+          await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri(FALLBACK_MODEL_URL),
+            faceapi.nets.ssdMobilenetv1.loadFromUri(FALLBACK_MODEL_URL),
+            faceapi.nets.faceLandmark68Net.loadFromUri(FALLBACK_MODEL_URL),
+            faceapi.nets.faceRecognitionNet.loadFromUri(FALLBACK_MODEL_URL),
+          ]);
+        }
         if (isMounted) {
           setIsModelLoaded(true);
           toast.success("AI Face Vision Engine Ready");

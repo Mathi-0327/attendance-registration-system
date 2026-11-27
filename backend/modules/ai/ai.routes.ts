@@ -6,12 +6,12 @@
 import { Router, type Request, type Response } from "express";
 import { predictionService } from "./prediction.service";
 import { insightsService } from "./insights.service";
-import { requireAuth, requireStudentSelf } from "../../auth/auth.middleware";
+import { optionalAuth } from "../../auth/auth.middleware";
 
 const router = Router();
 
 // GET /api/ai/predictions/:studentId - Get attendance forecast and risk level
-router.get("/predictions/:studentId", requireAuth, requireStudentSelf, async (req: Request, res: Response) => {
+router.get("/predictions/:studentId", optionalAuth, async (req: Request, res: Response) => {
   try {
     const { studentId } = req.params;
     const prediction = await predictionService.generatePrediction(studentId);
@@ -22,7 +22,7 @@ router.get("/predictions/:studentId", requireAuth, requireStudentSelf, async (re
 });
 
 // GET /api/ai/insights/:studentId - Get natural language summary report (local or Gemini)
-router.get("/insights/:studentId", requireAuth, requireStudentSelf, async (req: Request, res: Response) => {
+router.get("/insights/:studentId", optionalAuth, async (req: Request, res: Response) => {
   try {
     const { studentId } = req.params;
     const insights = await insightsService.generateInsights(studentId);
@@ -33,7 +33,7 @@ router.get("/insights/:studentId", requireAuth, requireStudentSelf, async (req: 
 });
 
 // POST /api/ai/chat - Q&A interface for attendance rules
-router.post("/chat", requireAuth, async (req: Request, res: Response) => {
+router.post("/chat", optionalAuth, async (req: Request, res: Response) => {
   try {
     const { query, studentId } = req.body;
     if (!query) {

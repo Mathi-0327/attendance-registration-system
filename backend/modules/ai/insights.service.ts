@@ -5,6 +5,7 @@
 
 import { db } from "../../../database/db";
 import { attendanceRecordsExtended } from "../../../database/schema/attendance.schema";
+import { attendanceRecords } from "../../../database/schema";
 import { eq } from "drizzle-orm";
 import { predictionService } from "./prediction.service";
 
@@ -20,10 +21,29 @@ export class InsightsService {
    */
   async generateInsights(studentId: string): Promise<string> {
     const prediction = await predictionService.generatePrediction(studentId);
-    const records = await db
-      .select()
-      .from(attendanceRecordsExtended)
-      .where(eq(attendanceRecordsExtended.studentId, studentId));
+    let records: Array<{ status: string }> = [];
+
+    try {
+      const extRecords = await db
+        .select()
+        .from(attendanceRecordsExtended)
+        .where(eq(attendanceRecordsExtended.studentId, studentId));
+      if (extRecords && extRecords.length > 0) {
+        records = extRecords;
+      }
+    } catch {}
+
+    if (records.length === 0) {
+      try {
+        const legacy = await db
+          .select()
+          .from(attendanceRecords)
+          .where(eq(attendanceRecords.studentId, studentId));
+        if (legacy && legacy.length > 0) {
+          records = legacy as any;
+        }
+      } catch {}
+    }
 
     const total = records.length;
     const present = records.filter(r => r.status === "present").length;

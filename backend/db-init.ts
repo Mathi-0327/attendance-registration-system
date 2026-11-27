@@ -547,10 +547,13 @@ export function initializeTables() {
       type TEXT NOT NULL,
       from_date INTEGER NOT NULL,
       to_date INTEGER NOT NULL,
+      total_days INTEGER NOT NULL DEFAULT 1,
       reason TEXT NOT NULL,
       subject_ids TEXT,
       document TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
+      approved_by INTEGER,
+      approved_at INTEGER,
       reviewed_by INTEGER,
       reviewed_at INTEGER,
       remarks TEXT,
@@ -572,7 +575,22 @@ export function initializeTables() {
       reviewed_by INTEGER,
       reviewed_at INTEGER,
       remarks TEXT,
+      reviewer_remarks TEXT,
       created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS attendance_predictions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id TEXT NOT NULL,
+      subject_id INTEGER,
+      current_rate REAL NOT NULL,
+      predicted_rate REAL NOT NULL,
+      trend_direction TEXT NOT NULL,
+      risk_score REAL NOT NULL DEFAULT 0,
+      risk_level TEXT NOT NULL,
+      recommendation TEXT,
+      generated_at INTEGER NOT NULL,
+      valid_until INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS attendance_summary (
@@ -644,6 +662,50 @@ export function initializeTables() {
     }
   } catch (err: any) {
     console.warn("[db-init] parent_details migration check note:", err.message);
+  }
+
+  // Safe dynamic column migrations for leave_requests
+  try {
+    const columns = sqlite.pragma("table_info(leave_requests)") as Array<{ name: string }>;
+    const existingColNames = new Set(columns.map(c => c.name));
+
+    const newColumns: Array<{ name: string; type: string }> = [
+      { name: "total_days", type: "INTEGER NOT NULL DEFAULT 1" },
+      { name: "approved_by", type: "INTEGER" },
+      { name: "approved_at", type: "INTEGER" },
+      { name: "reviewed_by", type: "INTEGER" },
+      { name: "reviewed_at", type: "INTEGER" },
+      { name: "subject_ids", type: "TEXT" },
+      { name: "document", type: "TEXT" },
+      { name: "remarks", type: "TEXT" },
+    ];
+
+    for (const col of newColumns) {
+      if (!existingColNames.has(col.name)) {
+        sqlite.exec(`ALTER TABLE leave_requests ADD COLUMN ${col.name} ${col.type}`);
+      }
+    }
+  } catch (err: any) {
+    console.warn("[db-init] leave_requests migration check note:", err.message);
+  }
+
+  // Safe dynamic column migrations for attendance_corrections
+  try {
+    const columns = sqlite.pragma("table_info(attendance_corrections)") as Array<{ name: string }>;
+    const existingColNames = new Set(columns.map(c => c.name));
+
+    const newColumns: Array<{ name: string; type: string }> = [
+      { name: "reviewer_remarks", type: "TEXT" },
+      { name: "supporting_document", type: "TEXT" },
+    ];
+
+    for (const col of newColumns) {
+      if (!existingColNames.has(col.name)) {
+        sqlite.exec(`ALTER TABLE attendance_corrections ADD COLUMN ${col.name} ${col.type}`);
+      }
+    }
+  } catch (err: any) {
+    console.warn("[db-init] attendance_corrections migration check note:", err.message);
   }
 
   console.log("[db-init] All tables initialized successfully.");

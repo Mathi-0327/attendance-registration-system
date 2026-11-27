@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
+const FALLBACK_MODEL_URL = "https://raw.githubusercontent.com/vladmandic/face-api/master/model/";
 // Standard Euclidean distance threshold for 128-d face recognition vectors (0.60 is standard)
 const DISTANCE_THRESHOLD = 0.58;
 const DETECTION_INTERVAL_MS = 280;
@@ -78,12 +79,22 @@ export function FaceAttendance({ sessionActive, onNavigateToEnrollment }: FaceAt
   const loadModels = useCallback(async () => {
     setModelsLoading(true);
     try {
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-      ]);
+      try {
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+      } catch (primaryErr) {
+        console.warn("Primary CDN face model load failed, retrying with fallback CDN...", primaryErr);
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(FALLBACK_MODEL_URL),
+          faceapi.nets.ssdMobilenetv1.loadFromUri(FALLBACK_MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(FALLBACK_MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(FALLBACK_MODEL_URL),
+        ]);
+      }
       setModelsLoaded(true);
       toast.success("High-Speed Biometric AI Vision loaded");
     } catch (err) {

@@ -198,11 +198,11 @@ export function securityHeadersMiddleware(req: Request, res: Response, next: Nex
   // Referrer policy
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
 
-  // Content Security Policy (relaxed for development)
+  // Content Security Policy (allows CDN face-api models and WebSocket)
   if (process.env.NODE_ENV === "production") {
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.qrserver.com; font-src 'self' data:; connect-src 'self' ws: wss:;"
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: https://api.qrserver.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: wss: https://cdn.jsdelivr.net https://*.jsdelivr.net https://raw.githubusercontent.com https://generativelanguage.googleapis.com https://fast2sms.com; media-src 'self' blob: mediastream:; worker-src 'self' blob:;"
     );
   }
 

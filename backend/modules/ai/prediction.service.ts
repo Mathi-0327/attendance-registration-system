@@ -5,6 +5,7 @@
 
 import { db } from "../../../database/db";
 import { attendanceRecordsExtended, attendancePredictions } from "../../../database/schema/attendance.schema";
+import { attendanceRecords } from "../../../database/schema";
 import { eq, desc } from "drizzle-orm";
 
 export class PredictionService {
@@ -12,12 +13,39 @@ export class PredictionService {
    * Generates or fetches attendance predictions for a specific student.
    */
   async generatePrediction(studentId: string) {
-    // 1. Fetch recent attendance records
-    const records = await db
-      .select()
-      .from(attendanceRecordsExtended)
-      .where(eq(attendanceRecordsExtended.studentId, studentId))
-      .orderBy(desc(attendanceRecordsExtended.markedAt));
+    // 1. Fetch recent attendance records (try extended table, fallback to standard attendance records)
+    let records: Array<{ status: string; markedAt?: Date; timestamp?: Date }> = [];
+    try {
+      const extRecords = await db
+        .select()
+        .from(attendanceRecordsExtended)
+        .where(eq(attendanceRecordsExtended.studentId, studentId))
+        .orderBy(desc(attendanceRecordsExtended.markedAt));
+      if (extRecords && extRecords.length > 0) {
+        records = extRecords;
+      }
+    } catch {
+      // Table might not exist or be empty
+    }
+
+    if (records.length === 0) {
+      try {
+        const legacy = await db
+          .select()
+          .from(attendanceRecords)
+          .where(eq(attendanceRecords.studentId, studentId))
+          .orderBy(desc(attendanceRecords.timestamp));
+
+        if (legacy && legacy.length > 0) {
+          records = legacy.map((r) => ({
+            status: r.status,
+            markedAt: r.timestamp,
+          }));
+        }
+      } catch (e: any) {
+        console.warn("[prediction] Could not query legacy attendance records:", e?.message);
+      }
+    }
 
     const totalCount = records.length;
     if (totalCount === 0) {
@@ -25,9 +53,9 @@ export class PredictionService {
         studentId,
         currentRate: 100,
         predictedRate: 100,
-        trendDirection: "stable",
+        trendDirection: "stable" as const,
         riskScore: 0,
-        riskLevel: "low",
+        riskLevel: "low" as const,
         recommendation: "Excellent! Maintain regular class attendance.",
       };
     }
@@ -93,14 +121,6 @@ export class PredictionService {
       recommendation = "Attention: Attendance is borderline. Try to attend all upcoming classes.";
     }
 
-    // Save prediction in DB
-    const existing = await db
-      .select()
-      .from(attendancePredictions)
-      .where(eq(attendancePredictions.studentId, studentId))
-      .limit(1)
-      .then((rows) => rows[0]);
-
     const predictionData = {
       studentId,
       currentRate,
@@ -113,13 +133,25 @@ export class PredictionService {
       validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000), // Valid for 1 day
     };
 
-    if (existing) {
-      await db
-        .update(attendancePredictions)
-        .set(predictionData)
-        .where(eq(attendancePredictions.id, existing.id));
-    } else {
-      await db.insert(attendancePredictions).values(predictionData);
+    // Save prediction in DB safely
+    try {
+      const existing = await db
+        .select()
+        .from(attendancePredictions)
+        .where(eq(attendancePredictions.studentId, studentId))
+        .limit(1)
+        .then((rows) => rows[0]);
+
+      if (existing) {
+        await db
+          .update(attendancePredictions)
+          .set(predictionData)
+          .where(eq(attendancePredictions.id, existing.id));
+      } else {
+        await db.insert(attendancePredictions).values(predictionData);
+      }
+    } catch (saveErr: any) {
+      console.warn("[prediction] Could not persist prediction to DB:", saveErr?.message);
     }
 
     return predictionData;
