@@ -16,12 +16,12 @@ import type {
   InsertStudent
 } from "@shared/schema";
 import session from "express-session";
-import { createRequire } from "module";
+import memorystore from "memorystore";
 import { studentRepository } from "./modules/students/student.repository";
 import { attendanceRepository } from "./modules/attendance/attendance.repository";
 import { userRepository } from "./auth/auth.repository";
 
-const require = createRequire(import.meta.url);
+const MemoryStore = memorystore(session);
 
 export interface IStorage {
   // User methods
@@ -59,10 +59,8 @@ export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    // MemoryStore for local development session tracking
-    const MemoryStore = require('memorystore')(session);
     this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000
+      checkPeriod: 86400000,
     });
   }
 
