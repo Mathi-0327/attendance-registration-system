@@ -1,7 +1,14 @@
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
+
+# Install build dependencies for native C++ addons like better-sqlite3
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 COPY package.json package-lock.json* ./
@@ -14,31 +21,39 @@ COPY . .
 RUN npm run build
 
 # ── Stage 2: Production runtime ──────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV PORT=5000
 
-# Only copy what's needed for runtime
+# Install runtime curl for healthcheck and build tools for native addons
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install only production dependencies
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --legacy-peer-deps && npm cache clean --force
 
-# Copy built artifacts
+# Copy built artifacts from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy face-api model files (required at runtime)
-COPY --from=builder /app/attached_assets ./attached_assets
+# Create database directory with proper permissions
+RUN mkdir -p /app/database && chown -R node:node /app
 
 # Expose the app port
 EXPOSE 5000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD wget -qO- http://localhost:5000/api/session || exit 1
+  CMD curl -f http://localhost:5000/api/session || exit 1
 
-# Non-root user for security
-RUN addgroup -S attendreg && adduser -S attendreg -G attendreg
-USER attendreg
+# Run as non-root user (built into official node image)
+USER node
 
 CMD ["node", "dist/index.cjs"]
